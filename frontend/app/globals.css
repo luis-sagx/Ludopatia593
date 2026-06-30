@@ -1,0 +1,52 @@
+:root {
+  --bg: #0b1220;
+  --panel: #131c2e;
+  --border: #243049;
+  --text: #e6ecf5;
+  --muted: #8b9ab3;
+  --accent: #3ddc84;
+  --accent2: #4aa3ff;
+  --danger: #ff5a6a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+a { color: var(--accent2); text-decoration: none; }
+nav {
+  display: flex; gap: 18px; align-items: center;
+  padding: 14px 22px; border-bottom: 1px solid var(--border);
+  background: var(--panel); position: sticky; top: 0;
+}
+nav .brand { font-weight: 700; color: var(--accent); margin-right: auto; }
+main { max-width: 980px; margin: 0 auto; padding: 24px 22px; }
+h1 { font-size: 1.5rem; }
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px; margin-bottom: 14px;
+}
+.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.muted { color: var(--muted); font-size: 0.85rem; }
+button {
+  background: var(--accent); color: #03210f; border: 0; border-radius: 8px;
+  padding: 9px 14px; font-weight: 600; cursor: pointer;
+}
+button.secondary { background: transparent; color: var(--accent2); border: 1px solid var(--border); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+input, select {
+  background: #0d1626; color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 9px 11px; width: 100%;
+}
+label { display: block; margin: 8px 0 4px; font-size: 0.85rem; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pill { background: #0d1626; border: 1px solid var(--border); border-radius: 8px; padding: 8px; text-align: center; }
+.pill b { display: block; font-size: 1.1rem; }
+.ev-pos { color: var(--accent); }
+.ev-neg { color: var(--danger); }
+.err { color: var(--danger); font-size: 0.85rem; }
+table { width: 100%; border-collapse: collapse; }
+td, th { padding: 8px 6px; border-bottom: 1px solid var(--border); text-align: left; }
+.disclaimer { font-size: 0.78rem; color: var(--muted); margin-top: 20px; border-top: 1px solid var(--border); padding-top: 12px; }

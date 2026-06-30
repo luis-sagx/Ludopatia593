@@ -62,6 +62,15 @@ docker compose up --build
 ```
 
 Arranque: entrena modelo → siembra DB (admin + fixtures demo) → levanta API.
+Frontend en http://localhost:3000.
+
+### Frontend solo (dev)
+
+```bash
+cd frontend
+npm install
+npm run dev   # http://localhost:3000, proxy /api -> backend:8000
+```
 
 ### Local (sin Docker, SQLite)
 
@@ -88,9 +97,14 @@ RBAC y leaderboard.
 - `GET /v1/me/performance` · `GET /v1/leaderboard`
 - `POST /v1/admin/fixtures/{id}/result` · `POST /v1/admin/model/reload` · `GET /v1/admin/audit`
 
+## Frontend (Next.js 15, App Router)
+
+`frontend/` — login/registro, listado de partidos con predicción + cuota + EV
+y apuesta en puntos, simulación de torneo (campeón), ranking y panel "mis
+predicciones" con ROI/hit-rate. Proxy `/api/*` al backend (sin CORS en navegador).
+
 ## Pendiente
 
-- Frontend Next.js/React.
 - Ensamble GBM (XGBoost) sobre features ELO/forma (fase 2).
 - ETL real API-Football con presupuesto de cuota diaria.
 
