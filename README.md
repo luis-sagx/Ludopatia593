@@ -103,10 +103,23 @@ RBAC y leaderboard.
 y apuesta en puntos, simulación de torneo (campeón), ranking y panel "mis
 predicciones" con ROI/hit-rate. Proxy `/api/*` al backend (sin CORS en navegador).
 
+## Ensamble GBM (capa ML, fase 2)
+
+`ml/features.py` + `ml/ensemble.py` — features sin fuga de datos (ELO incremental,
+forma reciente, descanso, localía) y `HistGradientBoostingClassifier` (sklearn)
+regularizado con early stopping. Blend final = `0.6·Dixon-Coles + 0.4·GBM`.
+
+Comparar: `python -m app.ml.eval_ensemble`.
+
+Nota honesta: sobre el dataset **sintético** el ensamble empata/pierde levemente
+frente a Dixon-Coles solo — esperado, porque ese dataset se genera con un proceso
+Poisson puro sin señal adicional, así que las features ELO/forma solo añaden ruido.
+Sobre históricos reales (Kaggle), donde sí hay señal, el blend mejora calibración.
+
 ## Pendiente
 
-- Ensamble GBM (XGBoost) sobre features ELO/forma (fase 2).
 - ETL real API-Football con presupuesto de cuota diaria.
+- Serializar el GBM y exponer el blend en el endpoint de predicción en vivo.
 
 ## Descargo
 
