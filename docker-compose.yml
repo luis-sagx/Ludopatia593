@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-app}
+      POSTGRES_DB: predictor
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: ./backend
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-dev}
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET}
+      DATABASE_URL: postgresql+psycopg2://app:${DB_PASSWORD:-app}@db:5432/predictor
+      REDIS_URL: redis://redis:6379/0
+      API_FOOTBALL_KEY: ${API_FOOTBALL_KEY:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?define ADMIN_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    # entrena modelo, siembra DB y arranca API
+    command: >
+      sh -c "python -m app.ml.train &&
+             python -m app.seed &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  pgdata:

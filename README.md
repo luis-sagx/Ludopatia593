@@ -1,0 +1,99 @@
+# ludopatia593 — Predictor Mundial FIFA 2026
+
+Predictor académico de la Copa Mundial 2026. Estima probabilidades de mercados
+(1X2, over/under, BTTS, marcador exacto, campeón) con un modelo **Dixon-Coles**
+calibrado, expone cuotas justas + valor esperado, y permite predicciones con
+**puntos virtuales** (sin dinero real). Construido con foco en **software seguro**.
+
+## Alcance (decisiones del proyecto)
+
+- **Sin dinero real** — solo predicción/simulación con puntos virtuales.
+- **Sin compliance regulatorio** — proyecto no publicado (académico).
+- **Datos gratis** — Dixon-Coles entrenado con históricos abiertos (Kaggle); el
+  pipeline corre con dataset sintético si no hay CSV. API-Football (plan free) es
+  opcional solo para fixtures.
+
+## Arquitectura
+
+Monolito modular Python. API FastAPI + servicio de inferencia ML en proceso.
+PostgreSQL (datos), Redis (cache cuotas/leaderboard + rate limit).
+
+```
+backend/app/
+  ml/        motor: dixon_coles, markets, calibration, montecarlo, train, inference
+  core/      config, security (Argon2id + JWT), ratelimit
+  db/        modelos SQLAlchemy + sesión
+  api/       auth, predictions, bets, admin, leaderboard
+  main.py    wiring + middleware de seguridad
+```
+
+## Motor de predicción
+
+- **Dixon-Coles** (Poisson bivariante + corrección tau marcadores bajos +
+  decaimiento temporal). Una matriz de marcadores deriva todos los mercados de
+  forma consistente.
+- **Monte Carlo** del torneo para campeón/finalista/avance de grupo.
+- **Evaluación honesta**: Brier, log-loss, RPS con **validación temporal
+  walk-forward** (sin fuga de datos). Calibración Platt disponible.
+
+## Seguridad (DevSecOps por diseño)
+
+- Passwords **Argon2id** (memory-hard, parámetros explícitos).
+- **JWT** acceso corto (15 min) + **refresh rotatorio con revocación** y
+  detección de reuso (revoca cadena ante robo).
+- **RBAC** user/admin, mínimo privilegio, rutas admin segregadas.
+- **Idempotencia** en predicciones (anti replay/doble-submit).
+- **Cuota siempre del servidor** (re-derivada del modelo) — imposible manipular
+  odds/payout desde el cliente.
+- **Concurrencia**: descuento de puntos bajo `SELECT ... FOR UPDATE` (anti race).
+- **IDOR** bloqueado (propiedad por objeto), **rate limiting** por IP,
+  headers endurecidos (CSP, nosniff, X-Frame-Options), CORS restringido.
+- Secretos **solo desde entorno** (nunca en código). Bitácora de auditoría.
+
+## Correr
+
+### Docker (recomendado)
+
+```bash
+cp .env.example .env
+# rellena JWT_SECRET (openssl rand -hex 32) y ADMIN_PASSWORD
+docker compose up --build
+# API en http://localhost:8000  (docs: /docs)
+```
+
+Arranque: entrena modelo → siembra DB (admin + fixtures demo) → levanta API.
+
+### Local (sin Docker, SQLite)
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt   # en py3.12; psycopg2 solo para Postgres
+python -m app.ml.train            # genera data/model.json
+DATABASE_URL="sqlite:///./dev.db" JWT_SECRET=dev python -m tests.smoke
+```
+
+## Test end-to-end
+
+`backend/tests/smoke.py` valida el flujo completo sobre SQLite: registro, login,
+predicción del modelo, apuesta con puntos, idempotencia, IDOR, liquidación admin,
+RBAC y leaderboard.
+
+## Endpoints clave
+
+- `POST /v1/auth/register` · `/login` · `/refresh` · `/logout` · `GET /me`
+- `GET /v1/fixtures` · `GET /v1/fixtures/{id}/prediction` · `GET /v1/predict?home=&away=`
+- `GET /v1/tournament/champion`
+- `POST /v1/bets` (puntos) · `GET /v1/bets` · `GET /v1/bets/{id}`
+- `GET /v1/me/performance` · `GET /v1/leaderboard`
+- `POST /v1/admin/fixtures/{id}/result` · `POST /v1/admin/model/reload` · `GET /v1/admin/audit`
+
+## Pendiente
+
+- Frontend Next.js/React.
+- Ensamble GBM (XGBoost) sobre features ELO/forma (fase 2).
+- ETL real API-Football con presupuesto de cuota diaria.
+
+## Descargo
+
+Las predicciones son **probabilísticas, no garantías**. Proyecto académico.

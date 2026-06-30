@@ -1,0 +1,21 @@
+# secretos / entorno
+.env
+*.env
+!.env.example
+
+# python
+backend/.venv/
+__pycache__/
+*.pyc
+
+# datos / modelos generados
+backend/data/model.json
+backend/data/results.csv
+
+# node / next
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# os
+.DS_Store
