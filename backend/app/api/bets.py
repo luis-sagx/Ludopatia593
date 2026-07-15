@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from ..db.session import get_db
@@ -50,6 +50,7 @@ def _server_odds(fx: Fixture, market: str, selection: str) -> float:
 @router.post("", response_model=PredictionOut, status_code=201)
 def place_prediction(
     body: PredictionIn,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -101,7 +102,11 @@ def place_prediction(
     db.add(pred)
     db.add(AuditLog(
         actor_id=user.id, action="place_prediction", resource=f"fixture:{fx.id}",
-        detail={"market": body.market, "selection": body.selection, "stake": body.stake_points, "odds": odds},
+        detail={
+            "market": body.market, "selection": body.selection,
+            "stake": body.stake_points, "odds": odds,
+            "request_id": request.state.request_id,
+        },
     ))
     try:
         db.commit()

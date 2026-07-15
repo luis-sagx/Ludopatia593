@@ -41,14 +41,17 @@ def _issue_tokens(db: Session, user: User) -> TokenOut:
 
 
 @router.post("/register", response_model=UserOut, status_code=201)
-def register(body: RegisterIn, db: Session = Depends(get_db)):
+def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "email ya registrado")
     user = User(email=body.email, password_hash=hash_password(body.password))
     db.add(user)
     db.commit()
     db.refresh(user)
-    db.add(AuditLog(actor_id=user.id, action="register", resource=f"user:{user.id}"))
+    db.add(AuditLog(
+        actor_id=user.id, action="register", resource=f"user:{user.id}",
+        detail={"request_id": request.state.request_id},
+    ))
     db.commit()
     return user
 
@@ -71,7 +74,10 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
         user.password_hash = hash_password(body.password)
         db.commit()
 
-    db.add(AuditLog(actor_id=user.id, action="login", resource=f"user:{user.id}"))
+    db.add(AuditLog(
+        actor_id=user.id, action="login", resource=f"user:{user.id}",
+        detail={"request_id": request.state.request_id},
+    ))
     db.commit()
     return _issue_tokens(db, user)
 

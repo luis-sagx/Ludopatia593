@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timezone
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -67,7 +67,7 @@ def _sample_scoreline(fx: Fixture) -> tuple[int, int]:
     return idx // cols, idx % cols
 
 
-def _apply_result(db: Session, fx: Fixture, hg: int, ag: int, actor_id: int) -> int:
+def _apply_result(db: Session, fx: Fixture, hg: int, ag: int, actor_id: int, request_id: str | None = None) -> int:
     """Cierra un fixture con el marcador dado y liquida sus predicciones pendientes.
 
     Acredita pagos al ganador bajo bloqueo de fila (anti race). Devuelve cuántas
@@ -98,7 +98,7 @@ def _apply_result(db: Session, fx: Fixture, hg: int, ag: int, actor_id: int) -> 
 
     db.add(AuditLog(
         actor_id=actor_id, action="settle_fixture", resource=f"fixture:{fx.id}",
-        detail={"score": f"{hg}-{ag}", "settled": settled},
+        detail={"score": f"{hg}-{ag}", "settled": settled, "request_id": request_id},
     ))
     return settled
 
@@ -107,6 +107,7 @@ def _apply_result(db: Session, fx: Fixture, hg: int, ag: int, actor_id: int) -> 
 def settle_fixture(
     fixture_id: int,
     body: ResultIn,
+    request: Request,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -118,7 +119,7 @@ def settle_fixture(
     if fx.status == FixtureStatus.finished:
         raise HTTPException(status.HTTP_409_CONFLICT, "fixture ya liquidado")
 
-    settled = _apply_result(db, fx, body.home_score, body.away_score, admin.id)
+    settled = _apply_result(db, fx, body.home_score, body.away_score, admin.id, request.state.request_id)
     db.commit()
     return {"fixture_id": fixture_id, "settled": settled}
 
@@ -126,6 +127,7 @@ def settle_fixture(
 @router.post("/simulate")
 def simulate_results(
     body: SimulateIn,
+    request: Request,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -147,7 +149,7 @@ def simulate_results(
     total_settled = 0
     for fx in fixtures:
         hg, ag = _sample_scoreline(fx)
-        settled = _apply_result(db, fx, hg, ag, admin.id)
+        settled = _apply_result(db, fx, hg, ag, admin.id, request.state.request_id)
         total_settled += settled
         results.append({
             "fixture_id": fx.id, "home_team": fx.home_team, "away_team": fx.away_team,
@@ -182,6 +184,7 @@ def audit_tail(
 
 @router.post("/fixtures/sync")
 def sync_fixtures(
+    request: Request,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -202,6 +205,7 @@ def sync_fixtures(
             "updated": result.updated,
             "competition_code": result.competition_code,
             "season": result.season,
+            "request_id": request.state.request_id,
         },
     ))
     db.commit()

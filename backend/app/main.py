@@ -6,6 +6,8 @@ cargado al arranque.
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
@@ -13,11 +15,14 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import settings
+from .core.logging import configure_logging
 from .core.ratelimit import allow
 from .ml.inference import inference
 from .api import auth, predictions, bets, admin, leaderboard
 
+configure_logging()
 logger = logging.getLogger(__name__)
+access_logger = logging.getLogger("access")
 _is_dev = settings.environment == "dev"
 
 
@@ -52,15 +57,38 @@ app.add_middleware(
 
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
-    # rate limit global por IP (defensa abuso)
+    # request_id: reusa el del proxy si viene (X-Request-Id), si no genera uno.
+    # Se guarda en request.state para poder cruzarlo con AuditLog en los routers.
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    request.state.request_id = request_id
+    start = time.perf_counter()
     ip = request.client.host if request.client else "unknown"
+
+    # rate limit global por IP (defensa abuso)
     if not allow(f"global:{ip}", settings.rate_limit_per_min):
-        return JSONResponse(
+        resp = JSONResponse(
             {"detail": "rate limit excedido"},
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         )
-    resp = await call_next(request)
+    else:
+        resp = await call_next(request)
+
+    # Traza estructurada de cada request. Solo metadata -- nunca headers ni
+    # body -- así Authorization/credenciales quedan fuera por construcción.
+    access_logger.info(
+        "http_request",
+        extra={"http": {
+            "request_id": request_id,
+            "ip": ip,
+            "method": request.method,
+            "path": request.url.path,
+            "status": resp.status_code,
+            "latency_ms": round((time.perf_counter() - start) * 1000, 2),
+        }},
+    )
+
     # headers de seguridad
+    resp.headers["X-Request-Id"] = request_id
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"
     resp.headers["Referrer-Policy"] = "no-referrer"
