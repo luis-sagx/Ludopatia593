@@ -7,6 +7,9 @@ services:
       POSTGRES_DB: predictor
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./backend/db-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d predictor"]
       interval: 5s
@@ -15,9 +18,14 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--save", "60", "1"]
+    # --requirepass: sin esto, cualquiera en backend-net (o quien alcance el
+    # contenedor) usa Redis libremente -- de él dependen el rate limiter y el
+    # cache de cuotas/leaderboard.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?define REDIS_PASSWORD}", "--save", "60", "1"]
+    networks:
+      - backend-net
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -27,8 +35,11 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-dev}
       JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET}
-      DATABASE_URL: postgresql+psycopg2://app:${DB_PASSWORD:-app}@db:5432/predictor
-      REDIS_URL: redis://redis:6379/0
+      # app_runtime: rol sin privilegios elevados creado por db-init/, distinto
+      # del usuario bootstrap (POSTGRES_USER) que Postgres exige mantener
+      # superusuario -- ver backend/db-init/10-create-app-runtime-role.sh
+      DATABASE_URL: postgresql+psycopg2://app_runtime:${DB_PASSWORD:-app}@db:5432/predictor
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       FOOTBALL_DATA_API_KEY: ${FOOTBALL_DATA_API_KEY:-}
       FOOTBALL_DATA_COMPETITION_CODE: ${FOOTBALL_DATA_COMPETITION_CODE:-WC}
       FOOTBALL_DATA_SEASON: ${FOOTBALL_DATA_SEASON:-2026}
@@ -40,6 +51,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - backend-net
+      - public-net
     ports:
       - "${BACKEND_PORT:-8080}:8000"
     # entrena modelo, siembra DB y arranca API
@@ -47,6 +61,27 @@ services:
       sh -c "python -m app.ml.train &&
              python -m app.seed &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      # train.py escribe data/model.json en cada arranque -- el resto del
+      # filesystem puede ser read_only, esta carpeta no.
+      - model-data:/app/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
   frontend:
     build:
@@ -57,8 +92,29 @@ services:
       BACKEND_URL: http://backend:8000
     depends_on:
       - backend
+    networks:
+      - public-net
     ports:
       - "3000:3000"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+networks:
+  backend-net:
+  public-net:
 
 volumes:
   pgdata:
+  model-data:
