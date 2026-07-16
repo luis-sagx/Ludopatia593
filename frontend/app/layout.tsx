@@ -1,6 +1,7 @@
 import "./globals.css";
 import Nav from "@/components/Nav";
 import { BetSlipProvider } from "@/lib/betslip";
+import { SessionBootstrap } from "@/lib/session";
 
 export const metadata = {
   title: "Predictor 26 — Sportsbook Mundial 2026",
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
+        <SessionBootstrap />
         <BetSlipProvider>
           <div className="shell">
             <Nav />

@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from ..core.config import settings
+from ..core.ratelimit import rate_limit_dep
 from ..db.session import get_db
 from ..db.models import User, Fixture, FixtureStatus, UserPrediction, AuditLog
 from ..schemas.schemas import PredictionIn, PredictionOut
@@ -47,7 +49,10 @@ def _server_odds(fx: Fixture, market: str, selection: str) -> float:
     return odds
 
 
-@router.post("", response_model=PredictionOut, status_code=201)
+@router.post(
+    "", response_model=PredictionOut, status_code=201,
+    dependencies=[Depends(rate_limit_dep("bets", settings.bets_rate_limit_per_min))],
+)
 def place_prediction(
     body: PredictionIn,
     request: Request,

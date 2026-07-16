@@ -16,13 +16,18 @@ class LoginIn(BaseModel):
 
 
 class TokenOut(BaseModel):
+    # El refresh token ya no viaja en el body -- va en cookie HttpOnly
+    # (ver api/auth.py). Solo el access token, que el frontend guarda en
+    # memoria (nunca localStorage).
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
 
 
-class RefreshIn(BaseModel):
-    refresh_token: str
+class SessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    jti: str
+    created_at: datetime
+    expires_at: datetime
 
 
 class UserOut(BaseModel):

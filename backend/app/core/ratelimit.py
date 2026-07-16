@@ -1,14 +1,22 @@
 """
 Rate limiting por ventana fija sobre Redis (defensa fuerza bruta / abuso).
 Si Redis no está disponible, degrada a memoria local (best-effort).
+
+Deuda técnica conocida: ventana fija, no deslizante -- un cliente puede hacer
+hasta ~2x el límite si concentra peticiones justo en el borde entre dos
+ventanas (ej. mitad al final del minuto N, mitad al inicio del minuto N+1).
+Aceptable para el volumen actual del proyecto; migrar a ventana deslizante
+(ej. sorted set con timestamps en Redis) si el tráfico real lo justifica.
 """
 from __future__ import annotations
 
 import logging
 import time
 from collections import defaultdict
+from typing import Callable
 
 import redis
+from fastapi import HTTPException, Request, status
 
 from .config import settings
 
@@ -70,3 +78,14 @@ def allow(key: str, limit: int, window_sec: int = 60) -> bool:
     hits.append(now)
     _mem[key] = hits
     return len(hits) <= limit
+
+
+def rate_limit_dep(key_prefix: str, limit: int) -> Callable[[Request], None]:
+    """Dependencia FastAPI reusable: 429 si el IP excede `limit`/min para
+    `key_prefix`. Se instancia una vez por ruta/router (`Depends(rate_limit_dep(...))`)
+    -- no confundir con `allow()`, que es la primitiva de bajo nivel."""
+    def _dep(request: Request) -> None:
+        ip = request.client.host if request.client else "unknown"
+        if not allow(f"{key_prefix}:{ip}", limit):
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "demasiadas peticiones")
+    return _dep

@@ -50,8 +50,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,   # restringido, no "*"
     allow_credentials=True,
-    allow_methods=["GET", "POST"],         # la API solo expone GET/POST
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["GET", "POST", "DELETE"],  # DELETE: revocar sesión propia
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
 )
 
 
@@ -88,6 +88,10 @@ async def security_middleware(request: Request, call_next):
     )
 
     # headers de seguridad
+    # Server: uvicorn no dice nada útil al cliente y sí le dice a un atacante
+    # qué stack/versión buscar. FastAPI/uvicorn solo agregan su valor default
+    # si el header no viene ya seteado -- al fijarlo acá lo pisamos.
+    resp.headers["Server"] = "ludopatia593"
     resp.headers["X-Request-Id"] = request_id
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"

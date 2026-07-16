@@ -1,6 +1,6 @@
 "use client";
 import { useBetSlip } from "@/lib/betslip";
-import { getToken } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import Link from "next/link";
 
 const QUICK = [50, 100, 250, 500];
@@ -10,7 +10,7 @@ function SlipInner() {
   const totalStake = items.reduce((s, i) => s + (i.stake || 0), 0);
   const totalReturn = items.reduce((s, i) => s + Math.round((i.stake || 0) * i.odds), 0);
   const allPlaced = items.length > 0 && items.every((i) => i.status === "placed");
-  const authed = typeof window !== "undefined" && !!getToken();
+  const { authed } = useSession();
 
   return (
     <>

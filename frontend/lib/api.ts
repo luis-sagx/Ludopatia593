@@ -1,36 +1,33 @@
 "use client";
 // Cliente API. El navegador llama al backend directo (puerto publicado).
 // CORS lo habilita el backend para http://localhost:3000.
-// Token en localStorage para demo. NOTA seguridad: en producción, refresh token
-// debería ir en cookie HttpOnly; aquí se simplifica por ser proyecto académico.
+// Access token en memoria (lib/session.ts), nunca localStorage. El refresh
+// token vive en una cookie HttpOnly que pone el backend -- este archivo
+// nunca la toca directamente, solo manda `credentials: "include"` para que
+// el navegador la adjunte solo.
 
 // NEXT_PUBLIC_* se hornea en build; default localhost:8000 sirve en Docker (puerto
 // publicado, el navegador corre en el host) y en dev local.
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-const TOKEN_KEY = "access_token";
-const REFRESH_KEY = "refresh_token";
+import { getAccessToken, setAccessToken, refreshSession, getCsrfToken } from "./session";
 
-export function getToken() {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
-export function setTokens(access: string, refresh: string) {
-  localStorage.setItem(TOKEN_KEY, access);
-  localStorage.setItem(REFRESH_KEY, refresh);
-}
-export function clearTokens() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
-}
-
-async function req(path: string, opts: RequestInit = {}, auth = false) {
+async function req(path: string, opts: RequestInit = {}, auth = false, _retried = false): Promise<any> {
   const headers: Record<string, string> = { "Content-Type": "application/json", ...(opts.headers as any) };
   if (auth) {
-    const t = getToken();
+    const t = getAccessToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
   }
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers });
+  const res = await fetch(`${BASE}${path}`, { ...opts, headers, credentials: "include" });
+
+  // Access token vencido (dura 15 min): intenta renovar UNA vez con la
+  // cookie de refresh antes de rendirse, para no desloguear al usuario en
+  // cada sesión de navegación normal.
+  if (res.status === 401 && auth && !_retried) {
+    const renewed = await refreshSession();
+    if (renewed) return req(path, opts, auth, true);
+  }
+
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail; } catch {}
@@ -40,15 +37,29 @@ async function req(path: string, opts: RequestInit = {}, auth = false) {
   return res.json();
 }
 
+function csrfHeaders(): Record<string, string> {
+  const csrf = getCsrfToken();
+  return csrf ? { "X-CSRF-Token": csrf } : {};
+}
+
 export const api = {
   register: (email: string, password: string) =>
     req("/v1/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
   login: async (email: string, password: string) => {
     const t = await req("/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
-    setTokens(t.access_token, t.refresh_token);
+    setAccessToken(t.access_token);
     return t;
   },
+  logout: async () => {
+    try {
+      await req("/v1/auth/logout", { method: "POST", headers: csrfHeaders() }, true);
+    } finally {
+      setAccessToken(null);
+    }
+  },
   me: () => req("/v1/auth/me", {}, true),
+  sessions: () => req("/v1/auth/sessions", {}, true),
+  revokeSession: (jti: string) => req(`/v1/auth/sessions/${jti}`, { method: "DELETE" }, true),
   fixtures: () => req("/v1/fixtures"),
   prediction: (id: number) => req(`/v1/fixtures/${id}/prediction`),
   tournament: () => req("/v1/tournament/champion"),

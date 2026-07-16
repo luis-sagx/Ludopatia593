@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import { api, clearTokens, getToken } from "@/lib/api";
+import { api } from "@/lib/api";
+import { useSession } from "@/lib/session";
 
 const LINKS = [
   { href: "/fixtures", label: "Partidos" },
@@ -13,15 +14,17 @@ const LINKS = [
 export default function Nav() {
   const [points, setPoints] = useState<number | null>(null);
   const [authed, setAuthed] = useState(false);
+  const { authed: hasToken, initializing } = useSession();
   const pathname = usePathname();
   const router = useRouter();
 
   const refresh = useCallback(() => {
-    if (!getToken()) { setAuthed(false); setPoints(null); return; }
+    if (initializing) return;
+    if (!hasToken) { setAuthed(false); setPoints(null); return; }
     api.me().then((u) => { setPoints(u.points_balance); setAuthed(true); }).catch(() => {
       setAuthed(false); setPoints(null);
     });
-  }, []);
+  }, [hasToken, initializing]);
 
   useEffect(() => {
     refresh();
@@ -62,7 +65,7 @@ export default function Nav() {
               </span>
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => { clearTokens(); setAuthed(false); router.push("/login"); }}
+                onClick={() => { api.logout().finally(() => { setAuthed(false); router.push("/login"); }); }}
               >
                 Salir
               </button>

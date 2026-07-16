@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
-import { api, getToken } from "./api";
+import { api } from "./api";
+import { useSession } from "./session";
 
 export type SlipItem = {
   key: string;
@@ -40,6 +41,7 @@ export function BetSlipProvider({ children }: { children: ReactNode }) {
   const [placing, setPlacing] = useState(false);
   const [needAuth, setNeedAuth] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { authed } = useSession();
 
   const isSelected = useCallback((key: string) => items.some((i) => i.key === key), [items]);
 
@@ -61,7 +63,7 @@ export function BetSlipProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const place = useCallback(async () => {
-    if (!getToken()) { setNeedAuth(true); return; }
+    if (!authed) { setNeedAuth(true); return; }
     setPlacing(true);
     const pending = items.filter((i) => i.status !== "placed");
     const results = await Promise.all(
@@ -89,7 +91,7 @@ export function BetSlipProvider({ children }: { children: ReactNode }) {
     setPlacing(false);
     // avisa a la barra superior para refrescar el saldo
     if (typeof window !== "undefined") window.dispatchEvent(new Event("balance:refresh"));
-  }, [items]);
+  }, [items, authed]);
 
   return (
     <BetSlipContext.Provider

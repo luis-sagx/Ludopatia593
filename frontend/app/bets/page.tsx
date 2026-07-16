@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, getToken } from "@/lib/api";
+import { api } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import { useRouter } from "next/navigation";
 
 const MARKET_LABEL: Record<string, string> = {
@@ -27,6 +28,7 @@ export default function BetsPage() {
   const [simulating, setSimulating] = useState(false);
   const [simMsg, setSimMsg] = useState("");
   const router = useRouter();
+  const { authed, initializing } = useSession();
 
   function refresh() {
     return Promise.all([
@@ -36,10 +38,11 @@ export default function BetsPage() {
   }
 
   useEffect(() => {
-    if (!getToken()) { router.push("/login"); return; }
+    if (initializing) return;
+    if (!authed) { router.push("/login"); return; }
     api.me().then((m: any) => setIsAdmin(m?.role === "admin")).catch(() => {});
     refresh().finally(() => setLoading(false));
-  }, []);
+  }, [initializing, authed]);
 
   async function runSimulate() {
     setSimulating(true);

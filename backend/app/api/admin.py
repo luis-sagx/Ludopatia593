@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from ..core.config import settings
+from ..core.ratelimit import rate_limit_dep
 from ..db.session import get_db
 from ..db.models import User, Fixture, FixtureStatus, UserPrediction, PredictionStatus, AuditLog
 from ..ml.inference import inference
@@ -21,7 +23,12 @@ from ..services.api_football import sync_world_cup_fixtures
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/v1/admin", tags=["admin"])
+# Límite a nivel de router: cubre TODAS las rutas admin (actuales y futuras)
+# con una sola línea -- defensa en profundidad, RBAC ya es el control primario.
+router = APIRouter(
+    prefix="/v1/admin", tags=["admin"],
+    dependencies=[Depends(rate_limit_dep("admin", settings.admin_rate_limit_per_min))],
+)
 
 
 class ResultIn(BaseModel):
