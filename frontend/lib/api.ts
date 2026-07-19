@@ -31,7 +31,13 @@ async function req(path: string, opts: RequestInit = {}, auth = false, _retried 
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail; } catch {}
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    const err: any = new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    err.status = res.status;
+    // Retry-After (segundos) en respuestas 429 -> el llamador puede bloquear el
+    // botón durante ese tiempo.
+    const ra = res.headers.get("Retry-After");
+    if (ra) err.retryAfter = parseInt(ra, 10);
+    throw err;
   }
   if (res.status === 204) return null;
   return res.json();

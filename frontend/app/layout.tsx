@@ -4,7 +4,7 @@ import { BetSlipProvider } from "@/lib/betslip";
 import { SessionBootstrap } from "@/lib/session";
 
 export const metadata = {
-  title: "Predictor 26 — Sportsbook Mundial 2026",
+  title: "Ludopatia 593 — Sportsbook Mundial 2026",
   description: "Casa de predicciones del Mundial 2026 con puntos virtuales. Cuotas justas y valor esperado (EV) derivados de un modelo Dixon-Coles calibrado. Proyecto académico, sin dinero real.",
 };
 
