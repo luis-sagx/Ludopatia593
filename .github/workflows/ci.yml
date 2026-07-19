@@ -1,0 +1,130 @@
+name: CI
+
+# Puerta de calidad ANTES de que Railway despliegue. Railway hace CD (redeploy
+# al hacer push a la rama conectada); este pipeline es el CI que faltaba:
+# corre tests con cobertura, construye las dos imágenes y las escanea con Trivy.
+# Un push que rompa tests, baje la cobertura del 80% o meta una vuln fixable
+# HIGH/CRITICAL falla aquí -> queda visible antes de llegar a producción.
+
+on:
+  push:
+    branches: [main, presentacion]
+  pull_request:
+    branches: [main]
+
+# Cancela runs viejos de la misma rama si llega un push nuevo.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write  # subir resultados SARIF de Trivy a la pestaña Security
+
+jobs:
+  # ── 1. Tests backend con cobertura (gate 80% definido en pytest.ini) ──
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias (incluye pytest/cov)
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
+
+      - name: Ejecutar tests + cobertura
+        working-directory: backend
+        env:
+          # SQLite en memoria de disco: sin Postgres/Redis en CI. El rate
+          # limiter degrada a memoria local (probado en test_ratelimit.py).
+          JWT_SECRET: ci-secret-not-used-in-prod
+          ENVIRONMENT: dev
+        run: python -m pytest
+
+      - name: Publicar reporte de cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-backend
+          path: backend/coverage.xml
+          if-no-files-found: ignore
+
+  # ── 2. Build de las dos imágenes Docker ──
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build imagen backend
+        run: docker build -t ludopatia593-backend:${{ github.sha }} ./backend
+
+      - name: Build imagen frontend
+        run: |
+          docker build -t ludopatia593-frontend:${{ github.sha }} \
+            --build-arg NEXT_PUBLIC_API_URL=http://localhost:8000 \
+            ./frontend
+
+      # Comparte las imágenes con el job de Trivy sin registry: las exporta a tar.
+      - name: Exportar imágenes
+        run: |
+          docker save ludopatia593-backend:${{ github.sha }}  -o backend-image.tar
+          docker save ludopatia593-frontend:${{ github.sha }} -o frontend-image.tar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-images
+          path: |
+            backend-image.tar
+            frontend-image.tar
+          retention-days: 1
+
+  # ── 3. Escaneo de vulnerabilidades con Trivy (backend + frontend) ──
+  trivy-scan:
+    runs-on: ubuntu-latest
+    needs: docker-build
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [backend, frontend]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+
+      - name: Cargar imagen ${{ matrix.image }}
+        run: docker load -i ${{ matrix.image }}-image.tar
+
+      - name: Trivy — escanear ${{ matrix.image }}
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: ludopatia593-${{ matrix.image }}:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true   # solo falla por vulns con parche disponible
+          exit-code: "1"         # rompe el build si hay HIGH/CRITICAL fixable
+          vuln-type: os,library
+
+      # Además del gate, sube SARIF a Security aunque el paso anterior falle.
+      - name: Trivy — reporte SARIF ${{ matrix.image }}
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: ludopatia593-${{ matrix.image }}:${{ github.sha }}
+          format: sarif
+          output: trivy-${{ matrix.image }}.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+
+      - name: Subir SARIF a la pestaña Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.image }}.sarif
+          category: trivy-${{ matrix.image }}
