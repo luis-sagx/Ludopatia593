@@ -100,7 +100,7 @@ jobs:
         run: docker load -i ${{ matrix.image }}-image.tar
 
       - name: Trivy — escanear ${{ matrix.image }}
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.29.0
         with:
           scan-type: image
           image-ref: ludopatia593-${{ matrix.image }}:${{ github.sha }}
@@ -113,7 +113,7 @@ jobs:
       # Además del gate, sube SARIF a Security aunque el paso anterior falle.
       - name: Trivy — reporte SARIF ${{ matrix.image }}
         if: always()
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.29.0
         with:
           scan-type: image
           image-ref: ludopatia593-${{ matrix.image }}:${{ github.sha }}
