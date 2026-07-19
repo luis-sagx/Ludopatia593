@@ -40,6 +40,7 @@ export default function LoginPage() {
   const pwWeak = mode === "register" && password.length >= 10 &&
     !(/[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password));
   const locked = lockSeconds > 0;
+  const mmss = `${Math.floor(lockSeconds / 60)}:${String(lockSeconds % 60).padStart(2, "0")}`;
 
   // Cuenta atrás del bloqueo tras un 429 (demasiados intentos).
   useEffect(() => {
@@ -134,11 +135,11 @@ export default function LoginPage() {
           {pwWeak && <p className="hint warn">Falta una mayúscula, un número o un caracter especial.</p>}
 
           {err && <p className="err" style={{ marginTop: 12 }}>⚠ {err}</p>}
-          {locked && <p className="hint warn">Demasiados intentos. Espera {lockSeconds}s para reintentar.</p>}
+          {locked && <p className="hint warn">Demasiados intentos. Espera {mmss} para reintentar.</p>}
 
           <button className="btn btn-primary btn-block" disabled={busy || locked} type="submit" style={{ marginTop: 18 }}>
             {busy ? <span className="spinner" />
-              : locked ? `Espera ${lockSeconds}s`
+              : locked ? `Espera ${mmss}`
               : mode === "login" ? "Entrar" : "Crear cuenta y jugar"}
           </button>
         </form>

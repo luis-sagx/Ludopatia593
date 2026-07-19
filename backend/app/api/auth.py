@@ -132,12 +132,13 @@ def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenOut)
 def login(body: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
     ip = request.client.host if request.client else "unknown"
-    if not allow(f"login:{ip}", settings.login_rate_limit_per_min):
-        # Retry-After: la ventana del rate limit es de 60s -> el frontend usa
-        # este valor para bloquear el botón "Entrar" durante ese tiempo.
+    if not allow(f"login:{ip}", settings.login_rate_limit_per_min,
+                 window_sec=settings.login_lockout_seconds):
+        # Retry-After = ventana de bloqueo (30 min) -> el frontend lo usa para la
+        # cuenta regresiva del botón "Entrar".
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "demasiados intentos",
-            headers={"Retry-After": "60"},
+            headers={"Retry-After": str(settings.login_lockout_seconds)},
         )
 
     user = db.query(User).filter(User.email == body.email).first()

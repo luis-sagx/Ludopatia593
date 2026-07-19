@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     # puntos, carga sobre operaciones admin) que el límite global no acota.
     rate_limit_per_min: int = 120
     login_rate_limit_per_min: int = 5
+    # Ventana del límite de login: tras 5 intentos se bloquea por este tiempo
+    # (30 min) -- defensa fuerte contra fuerza bruta. El frontend usa el
+    # Retry-After (= este valor) para la cuenta regresiva del botón "Entrar".
+    login_lockout_seconds: int = 1800
     register_rate_limit_per_min: int = 8
     # El boleto se envía en paralelo (una petición POST /v1/bets por selección),
     # así que un boleto grande + algún reintento puede superar un límite bajo en la
