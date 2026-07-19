@@ -155,6 +155,7 @@ Confirmado sobre el contenedor `backend` real, no solo sobre el YAML.
 
 - `docker-compose.yml` — networks, `cap_drop`/`read_only`/`security_opt`/límites/healthcheck en `backend` y `frontend`, `--requirepass` en `redis`, `DATABASE_URL` apuntando a `app_runtime`, volumen `model-data` nuevo.
 - **Nuevo**: `backend/db-init/10-create-app-runtime-role.sh`
+- **Nuevo (2026-07-19)**: `frontend/.dockerignore` y `backend/.dockerignore` — el Dockerfile del frontend hacía `COPY . .`, que sin exclusiones hornearía en la imagen `node_modules`, `.next` y — el riesgo real — cualquier `.env*` local presente en disco. Ambos `.dockerignore` excluyen `.env*` (salvo `.env.example`), artefactos de build y `.git`. Rebuild del frontend verificado OK tras el cambio.
 - `.env.example` — se agregó `REDIS_PASSWORD`.
 
 ## Qué queda pendiente
@@ -168,4 +169,5 @@ Confirmado sobre el contenedor `backend` real, no solo sobre el YAML.
 
 ## Historial de revisiones
 
+- **2026-07-19** — Auditoría de verificación: se contrastó cada afirmación de este doc contra el código real y se probó en runtime con `ENVIRONMENT=production` (Redis `NOAUTH` sin password confirmado en vivo). Se cerró el hallazgo pendiente de `.dockerignore` (frontend + backend).
 - **2026-07-15** — Implementación completa de la sección 04 sobre `Mateo_VerificacionAcciones`: segmentación de red, `cap_drop`/`read_only`/límites/healthcheck en `backend` y `frontend`, Redis con `--requirepass`, y separación de rol de Postgres (`app_runtime` sin privilegios elevados, hallazgo no contemplado en el plan original). Todo verificado end-to-end en un proyecto Docker aislado (`ludoptest`, volúmenes descartados al terminar) para no afectar el volumen de datos local ya existente.

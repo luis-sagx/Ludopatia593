@@ -1,0 +1,15 @@
+# Evita hornear en la imagen artefactos locales y, sobre todo, secretos:
+# el Dockerfile hace `COPY . .`, así que sin esto un .env.local del dev
+# (gitignored pero presente en disco) terminaría dentro del bundle.
+node_modules
+.next
+out
+.env
+.env.*
+!.env.example
+npm-debug.log*
+.git
+.gitignore
+Dockerfile
+.dockerignore
+README.md

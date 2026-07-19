@@ -22,6 +22,33 @@ Al final hay un **prompt reutilizable** para que otra persona (o un asistente de
 
 ---
 
+## ⚠️ Importante: controles condicionados al entorno (`dev` vs `production`)
+
+Varios controles **solo se activan cuando `ENVIRONMENT=production`** (o cualquier valor distinto de `dev`). En un `docker compose up` local, que corre en `dev` por defecto, están **apagados a propósito** — esto es diseño, no un control faltante. Verificar en local (dev) y concluir "no está implementado" es un error de método: hay que probar con `ENVIRONMENT=production`.
+
+| Control | En `dev` (local) | En `production` | Dónde |
+|---|---|---|---|
+| HSTS (`Strict-Transport-Security`) | ausente | presente | `main.py` (`environment != "dev"`) |
+| `/docs`, `/redoc`, `/openapi.json` | **200** (accesibles) | **404** | `main.py` (`docs_url=... if _is_dev else None`) |
+| Cookies de sesión `Secure` + `SameSite=None` | `secure=False`, `Lax` | `secure=True`, `None` | `auth.py::_cookie_flags` |
+| Fail-fast de `JWT_SECRET` débil | permitido (default dev) | **rechaza el arranque** | `config.py::reject_weak_secret` |
+
+Controles que **sí** están activos también en `dev` (no dependen del entorno): header `Server: ludopatia593`, `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy`, `Referrer-Policy`, rate limiting, Redis con `--requirepass`, rol `app_runtime` no-superusuario, `cap_drop`/`read_only`/`no-new-privileges`, logging estructurado, CSRF.
+
+### Cómo verificar en modo producción localmente
+
+```bash
+export ENVIRONMENT=production JWT_SECRET=$(openssl rand -hex 32)
+docker compose up -d backend
+curl -sS -D - -o /dev/null http://localhost:8080/health | grep -i strict-transport   # presente
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/docs                    # 404
+docker compose up -d backend   # (sin los exports) para volver a modo dev
+```
+
+**Verificación en runtime ejecutada — 2026-07-19:** se levantó el backend con `ENVIRONMENT=production` y se confirmó empíricamente: HSTS presente; `/docs`=`/redoc`=`/openapi.json`=404; `Server: ludopatia593` (sin `uvicorn`); fail-fast del `JWT_SECRET` débil (`ValidationError`, el contenedor no arranca); Redis responde `NOAUTH Authentication required.` sin contraseña; rate limit de login corta en el 6.º intento (`401 x5` → `429`). Todos los controles descritos en las secciones 02–07 quedaron verificados también en ejecución, no solo por lectura de código.
+
+---
+
 ## 01 · Lista de activos
 
 ### Qué buscar / hallar
@@ -285,7 +312,9 @@ haber cambiado):
   - ALTO: CORS_ORIGINS de producción no verificable desde el repo (depende de variable
     de entorno en Railway, no versionada).
   - MEDIO: JWT_SECRET sin gestión de secretos ni rotación documentada.
-  - MEDIO: sin .dockerignore en frontend/ (COPY . . podría hornear un .env local).
+  - RESUELTO (2026-07-19): faltaba .dockerignore en frontend/ (COPY . . podía hornear
+    un .env local). Añadidos frontend/.dockerignore y backend/.dockerignore que excluyen
+    .env*, node_modules, .next, .venv, etc. Rebuild del frontend verificado OK.
   - MEDIO: sin logging estructurado de requests HTTP (solo existe AuditLog de negocio).
   - MEDIO: X-Powered-By: Next.js expuesto (falta poweredByHeader: false).
 

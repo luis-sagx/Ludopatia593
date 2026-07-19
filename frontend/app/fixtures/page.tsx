@@ -157,18 +157,21 @@ export default function FixturesPage() {
   const [tab, setTab] = useState<"upcoming" | "results" | "all">("upcoming");
 
   useEffect(() => {
-    api.fixtures().then(async (fx: Fixture[]) => {
-      setFixtures(fx);
-      setLoading(false);
-      const active = fx.filter((f) => f.status !== "finished");
-      const entries = await Promise.all(
-        active.map(async (f) => {
-          try { return [f.id, await api.prediction(f.id)] as const; }
-          catch { return [f.id, null] as const; }
-        })
-      );
-      setPreds(Object.fromEntries(entries));
-    }).catch((e) => { setErr(e.message); setLoading(false); });
+    let alive = true;
+    // Una sola petición para las cuotas de todos los partidos (endpoint batch)
+    // en vez de una por fixture: evita saturar el rate limit al navegar.
+    Promise.all([
+      api.fixtures(),
+      api.predictionsBatch().catch(() => ({} as Record<string, any>)),
+    ])
+      .then(([fx, batch]: [Fixture[], Record<string, any>]) => {
+        if (!alive) return;
+        setFixtures(fx);
+        setPreds(batch || {});
+        setLoading(false);
+      })
+      .catch((e) => { if (alive) { setErr(e.message); setLoading(false); } });
+    return () => { alive = false; };
   }, []);
 
   const shown = useMemo(() => {

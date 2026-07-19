@@ -1,0 +1,15 @@
+# Defensa en profundidad: aunque el Dockerfile usa COPY selectivo (app/, data/,
+# start.sh), esto evita arrastrar secretos o artefactos si el COPY cambia.
+.venv
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+data/model.json
+data/results.csv
+smoke.db
+.git
+.gitignore
+Dockerfile
+.dockerignore

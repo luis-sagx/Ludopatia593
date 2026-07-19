@@ -6,10 +6,12 @@ import Link from "next/link";
 const QUICK = [50, 100, 250, 500];
 
 function SlipInner() {
-  const { items, remove, clear, setStake, setAllStakes, place, placing, needAuth } = useBetSlip();
+  const { items, remove, clear, setStake, setAllStakes, maxStake, balance, place, placing, needAuth } = useBetSlip();
   const totalStake = items.reduce((s, i) => s + (i.stake || 0), 0);
   const totalReturn = items.reduce((s, i) => s + Math.round((i.stake || 0) * i.odds), 0);
   const allPlaced = items.length > 0 && items.every((i) => i.status === "placed");
+  const pendingStake = items.filter((i) => i.status !== "placed").reduce((s, i) => s + (i.stake || 0), 0);
+  const overBalance = balance != null && pendingStake > balance;
   const { authed } = useSession();
 
   return (
@@ -54,9 +56,13 @@ function SlipInner() {
                     <div className="si-stake">
                       <input
                         className="stake-input" type="number" min={1} value={i.stake}
-                        onChange={(e) => setStake(i.key, Math.max(0, +e.target.value))}
+                        onChange={(e) => setStake(i.key, Math.max(1, Math.floor(+e.target.value) || 1))}
                       />
                       <span className="small muted">pts</span>
+                      {authed && balance != null && (
+                        <button className="si-max" title="Apostar todo el saldo disponible"
+                          onClick={() => maxStake(i.key)}>Máx</button>
+                      )}
                     </div>
                     <div className="si-return">
                       Retorno posible <b>{Math.round((i.stake || 0) * i.odds)}</b> pts
@@ -77,7 +83,16 @@ function SlipInner() {
             )}
             <div className="slip-summary"><span className="muted">Selecciones</span><span>{items.length}</span></div>
             <div className="slip-summary"><span className="muted">Total apostado</span><span>{totalStake} pts</span></div>
+            {authed && balance != null && (
+              <div className="slip-summary"><span className="muted">Saldo disponible</span><span>{balance} pts</span></div>
+            )}
             <div className="slip-summary total"><span>Retorno posible</span><span className="ret">{totalReturn} pts</span></div>
+
+            {overBalance && (
+              <p className="err" style={{ marginTop: 8 }}>
+                El total ({pendingStake} pts) supera tu saldo ({balance} pts).
+              </p>
+            )}
 
             {needAuth && !authed && (
               <p className="err" style={{ marginTop: 8 }}>
@@ -92,7 +107,7 @@ function SlipInner() {
             ) : (
               <button
                 className="btn btn-primary btn-block" style={{ marginTop: 10 }}
-                disabled={placing || totalStake <= 0}
+                disabled={placing || totalStake <= 0 || overBalance}
                 onClick={place}
               >
                 {placing ? <span className="spinner" /> : `Apostar ${totalStake} pts`}

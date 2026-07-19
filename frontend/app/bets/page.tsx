@@ -48,8 +48,15 @@ export default function BetsPage() {
     setSimulating(true);
     setSimMsg("");
     try {
-      const r = await api.simulate({ count: 24 });
-      setSimMsg(`Se cerraron ${r.simulated} partidos y se liquidaron ${r.settled} apuestas.`);
+      // Sin parámetros: el backend juega la SIGUIENTE jornada/ronda completa y
+      // desbloquea la siguiente (desbloqueo progresivo, como un mundial real).
+      const r = await api.simulate({});
+      if (r.tournament_over && r.simulated === 0) {
+        setSimMsg("El torneo ha terminado: no quedan partidos por jugar.");
+      } else {
+        const next = r.tournament_over ? " Fue la última ronda del torneo." : " Se desbloqueó la siguiente ronda.";
+        setSimMsg(`Se jugó ${r.round_label}: ${r.simulated} partidos cerrados y ${r.settled} apuestas liquidadas.${next}`);
+      }
       await refresh();
       window.dispatchEvent(new Event("balance:refresh"));
     } catch (e: any) {
@@ -70,14 +77,15 @@ export default function BetsPage() {
         <div className="card" style={{ marginBottom: 16, borderColor: "var(--gold)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontWeight: 700 }}>Panel admin · Simular jornada</div>
+              <div style={{ fontWeight: 700 }}>Panel admin · Jugar siguiente jornada</div>
               <div className="muted small">
-                Cierra los próximos partidos por jugar con un marcador realista del modelo
-                y liquida (gana/pierde) todas las apuestas pendientes.
+                Juega la próxima jornada/ronda (grupos → eliminatorias) con los resultados
+                del torneo, liquida las apuestas pendientes y <b>desbloquea la siguiente ronda</b>.
+                El cuadro se revela de forma progresiva, como en un mundial real.
               </div>
             </div>
             <button className="btn" onClick={runSimulate} disabled={simulating}>
-              {simulating ? <><span className="spinner" /> Simulando…</> : "Simular próxima jornada"}
+              {simulating ? <><span className="spinner" /> Jugando…</> : "Jugar siguiente jornada"}
             </button>
           </div>
           {simMsg && <p className="small" style={{ marginBottom: 0, marginTop: 10 }}>{simMsg}</p>}

@@ -62,6 +62,8 @@ export const api = {
   revokeSession: (jti: string) => req(`/v1/auth/sessions/${jti}`, { method: "DELETE" }, true),
   fixtures: () => req("/v1/fixtures"),
   prediction: (id: number) => req(`/v1/fixtures/${id}/prediction`),
+  // Predicciones de TODOS los partidos por jugar en una sola petición (evita N+1).
+  predictionsBatch: () => req("/v1/fixtures/predictions"),
   tournament: () => req("/v1/tournament/champion"),
   placeBet: (b: any) => req("/v1/bets", { method: "POST", body: JSON.stringify(b) }, true),
   myBets: () => req("/v1/bets", {}, true),

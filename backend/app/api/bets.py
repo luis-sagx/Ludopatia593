@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..core.config import settings
@@ -75,6 +76,15 @@ def place_prediction(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "fixture no existe")
     if fx.status != FixtureStatus.scheduled:
         raise HTTPException(status.HTTP_409_CONFLICT, "fixture no admite predicciones")
+    # Desbloqueo progresivo: no aceptar apuestas de rondas aún bloqueadas (una
+    # ronda futura que todavía no se ha desbloqueado en la UI). Defensa server-side.
+    active_round = (
+        db.query(func.min(Fixture.round_order))
+        .filter(Fixture.status == FixtureStatus.scheduled)
+        .scalar()
+    )
+    if active_round is not None and fx.round_order > active_round:
+        raise HTTPException(status.HTTP_409_CONFLICT, "el partido aún no está habilitado para apostar")
     # Defensa en profundidad: aunque el status siga 'scheduled', no aceptar
     # apuestas si el kickoff ya pasó (status desincronizado). Normaliza naive->UTC.
     ko = fx.kickoff_utc

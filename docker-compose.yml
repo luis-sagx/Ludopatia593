@@ -88,6 +88,9 @@ services:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8080}
+        # Cuentas demo ocultas por defecto (seguro). Para mostrarlas en local,
+        # exporta DEMO_ACCOUNTS=1 antes de construir.
+        NEXT_PUBLIC_DEMO_ACCOUNTS: ${DEMO_ACCOUNTS:-0}
     environment:
       BACKEND_URL: http://backend:8000
     depends_on:

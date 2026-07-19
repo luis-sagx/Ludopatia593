@@ -77,16 +77,21 @@ npm run dev   # http://localhost:3000, proxy /api -> backend:8000
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt   # en py3.12; psycopg2 solo para Postgres
-python -m app.ml.train            # genera data/model.json
-DATABASE_URL="sqlite:///./dev.db" JWT_SECRET=dev python -m tests.smoke
+pip install -r requirements-dev.txt   # incluye pytest/cov; psycopg2 solo para Postgres
+python -m app.ml.train                # genera data/model.json
+python -m pytest                      # suite completa sobre SQLite
 ```
 
-## Test end-to-end
+## Tests
 
-`backend/tests/smoke.py` valida el flujo completo sobre SQLite: registro, login,
-predicción del modelo, apuesta con puntos, idempotencia, IDOR, liquidación admin,
-RBAC y leaderboard.
+`backend/tests/` (pytest, sobre SQLite, sin Docker) valida el flujo completo y
+la seguridad: registro, login, refresh rotatorio + CSRF, predicción del modelo,
+apuesta con puntos, idempotencia, IDOR, liquidación admin, RBAC, rate limiting,
+cabeceras endurecidas y leaderboard. Cobertura con gate 80% (`backend/pytest.ini`).
+
+```bash
+cd backend && python -m pytest   # corre la suite + reporte de cobertura
+```
 
 ## Endpoints clave
 

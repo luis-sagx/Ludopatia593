@@ -19,3 +19,10 @@ frontend/out/
 
 # os
 .DS_Store
+
+# Test/CI artifacts
+.coverage
+coverage.xml
+.pytest_cache/
+tests/_pytest.db
+backend/smoke.db

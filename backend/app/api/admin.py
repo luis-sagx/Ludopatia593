@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..core.config import settings
@@ -18,6 +19,7 @@ from ..db.session import get_db
 from ..db.models import User, Fixture, FixtureStatus, UserPrediction, PredictionStatus, AuditLog
 from ..ml.inference import inference
 from ..ml.markets import market_1x2, market_over_under, market_btts
+from .predictions import invalidate_prediction_cache
 from .deps import require_admin
 from ..services.api_football import sync_world_cup_fixtures
 
@@ -37,9 +39,22 @@ class ResultIn(BaseModel):
 
 
 class SimulateIn(BaseModel):
-    """Parámetros para simular el cierre de una tanda de partidos por jugar."""
+    """Parámetros para simular el cierre de una tanda de partidos por jugar.
+
+    Por defecto (sin parámetros) juega la SIGUIENTE JORNADA/RONDA completa: los
+    partidos de la ronda activa más temprana. Al terminarla, la siguiente ronda
+    se desbloquea (desbloqueo progresivo, como un mundial real). Los parámetros
+    count/stage permiten un cierre manual más granular desde el panel.
+    """
     count: int | None = Field(default=None, ge=1, le=200, description="cuántos fixtures cerrar (los más próximos)")
     stage: str | None = Field(default=None, max_length=40, description="limitar a una fase, p.ej. group_a")
+
+
+ROUND_LABELS = {
+    1: "Jornada 1 (grupos)", 2: "Jornada 2 (grupos)", 3: "Jornada 3 (grupos)",
+    4: "Dieciseisavos de final", 5: "Octavos de final", 6: "Cuartos de final",
+    7: "Semifinales", 8: "Partido por el 3.º puesto", 9: "Final",
+}
 
 
 def _won(market: str, selection: str, hg: int, ag: int) -> bool:
@@ -54,6 +69,19 @@ def _won(market: str, selection: str, hg: int, ag: int) -> bool:
         both = hg > 0 and ag > 0
         return (selection == "yes" and both) or (selection == "no" and not both)
     return False
+
+
+def _resolve_scoreline(fx: Fixture) -> tuple[int, int]:
+    """Marcador con el que se cierra un fixture al simular la jornada.
+
+    Si el fixture tiene guardado su resultado REAL del Mundial 2026
+    (result_home/away_score), se usa ese marcador verídico para que la demo
+    revele los resultados reales al avanzar el torneo. Solo cuando no se conoce
+    (p.ej. final y tercer puesto, aún por disputarse) se muestrea del modelo.
+    """
+    if fx.result_home_score is not None and fx.result_away_score is not None:
+        return fx.result_home_score, fx.result_away_score
+    return _sample_scoreline(fx)
 
 
 def _sample_scoreline(fx: Fixture) -> tuple[int, int]:
@@ -128,6 +156,7 @@ def settle_fixture(
 
     settled = _apply_result(db, fx, body.home_score, body.away_score, admin.id, request.state.request_id)
     db.commit()
+    invalidate_prediction_cache()
     return {"fixture_id": fixture_id, "settled": settled}
 
 
@@ -146,16 +175,36 @@ def simulate_results(
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "modelo no cargado")
 
     q = db.query(Fixture).filter(Fixture.status == FixtureStatus.scheduled)
+    played_round = None
     if body.stage:
         q = q.filter(Fixture.stage == body.stage)
-    fixtures = q.order_by(Fixture.kickoff_utc.asc()).all()
-    if body.count:
-        fixtures = fixtures[: body.count]
+        fixtures = q.order_by(Fixture.kickoff_utc.asc()).all()
+        if body.count:
+            fixtures = fixtures[: body.count]
+    elif body.count:
+        fixtures = q.order_by(Fixture.kickoff_utc.asc()).all()[: body.count]
+    else:
+        # Por defecto: juega la SIGUIENTE JORNADA/RONDA completa (desbloqueo
+        # progresivo). La ronda activa = la menor round_order aún 'scheduled'.
+        played_round = (
+            db.query(func.min(Fixture.round_order))
+            .filter(Fixture.status == FixtureStatus.scheduled)
+            .scalar()
+        )
+        if played_round is None:
+            return {"simulated": 0, "settled": 0, "round": None, "round_label": None,
+                    "tournament_over": True, "results": []}
+        played_round = int(played_round)
+        fixtures = (
+            q.filter(Fixture.round_order == played_round)
+            .order_by(Fixture.kickoff_utc.asc())
+            .all()
+        )
 
     results = []
     total_settled = 0
     for fx in fixtures:
-        hg, ag = _sample_scoreline(fx)
+        hg, ag = _resolve_scoreline(fx)
         settled = _apply_result(db, fx, hg, ag, admin.id, request.state.request_id)
         total_settled += settled
         results.append({
@@ -163,7 +212,20 @@ def simulate_results(
             "score": f"{hg}-{ag}", "settled": settled,
         })
     db.commit()
-    return {"simulated": len(results), "settled": total_settled, "results": results}
+    invalidate_prediction_cache()
+    # ¿queda algo por jugar tras esta ronda?
+    remaining = (
+        db.query(func.min(Fixture.round_order))
+        .filter(Fixture.status == FixtureStatus.scheduled)
+        .scalar()
+    )
+    return {
+        "simulated": len(results), "settled": total_settled,
+        "round": played_round,
+        "round_label": ROUND_LABELS.get(played_round) if played_round else None,
+        "tournament_over": remaining is None,
+        "results": results,
+    }
 
 
 @router.post("/model/reload")

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # global, estos endpoints tienen uno propio más estricto porque su abuso
     # tiene un costo específico (creación masiva de cuentas, farming de
     # puntos, carga sobre operaciones admin) que el límite global no acota.
-    rate_limit_per_min: int = 60
+    rate_limit_per_min: int = 120
     login_rate_limit_per_min: int = 5
     register_rate_limit_per_min: int = 8
     bets_rate_limit_per_min: int = 20

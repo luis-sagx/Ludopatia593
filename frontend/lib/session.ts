@@ -40,6 +40,13 @@ export function getCsrfToken(): string | null {
 
 /** Renueva el access token usando la cookie HttpOnly de refresh (doble-envío CSRF). */
 export async function refreshSession(): Promise<boolean> {
+  // Token al inicio de la llamada: si durante el refresh (asíncrono) el usuario
+  // inicia sesión y setea un token nuevo, NO debemos pisarlo al fallar el
+  // refresh. Esto evita la race del bootstrap que dejaba deslogueado tras login.
+  const tokenAtStart = accessToken;
+  const clearIfUnchanged = () => {
+    if (accessToken === tokenAtStart) setAccessToken(null);
+  };
   try {
     const csrf = getCsrfToken();
     const res = await fetch(`${BASE}/v1/auth/refresh`, {
@@ -48,14 +55,14 @@ export async function refreshSession(): Promise<boolean> {
       headers: csrf ? { "X-CSRF-Token": csrf } : {},
     });
     if (!res.ok) {
-      setAccessToken(null);
+      clearIfUnchanged();
       return false;
     }
     const data = await res.json();
     setAccessToken(data.access_token);
     return true;
   } catch {
-    setAccessToken(null);
+    clearIfUnchanged();
     return false;
   }
 }

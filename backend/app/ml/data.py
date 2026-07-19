@@ -69,6 +69,19 @@ SYNTH_TEAM_STRENGTHS = {
     "New Zealand": (-0.04, 0.20),
     "Uzbekistan": (0.02, 0.14),
     "Jordan": (-0.02, 0.16),
+    # Selecciones del Mundial 2026 que faltaban en el universo del modelo.
+    # Priors plausibles según ranking FIFA previo al torneo (nov-2025).
+    "Ivory Coast": (0.20, -0.05),
+    "Algeria": (0.16, -0.02),
+    "Tunisia": (0.06, 0.08),
+    "Bosnia and Herzegovina": (0.08, 0.06),
+    "Qatar": (0.02, 0.14),
+    "Iraq": (0.00, 0.14),
+    "DR Congo": (0.08, 0.08),
+    "South Africa": (0.02, 0.12),
+    "Cape Verde": (-0.02, 0.16),
+    "Curacao": (-0.06, 0.20),
+    "Haiti": (-0.06, 0.20),
 }
 
 

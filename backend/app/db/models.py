@@ -90,6 +90,17 @@ class Fixture(Base):
     status: Mapped[FixtureStatus] = mapped_column(Enum(FixtureStatus), default=FixtureStatus.scheduled)
     home_score: Mapped[int | None] = mapped_column(Integer)
     away_score: Mapped[int | None] = mapped_column(Integer)
+    # Orden global de ronda para el DESBLOQUEO PROGRESIVO (realismo): 1-3 jornadas
+    # de grupos, 4=dieciseisavos, 5=octavos, 6=cuartos, 7=semis, 8=3er puesto,
+    # 9=final. Solo se muestran/apuestan las rondas hasta la activa (la menor con
+    # partidos 'scheduled'); las siguientes se revelan al simular la anterior.
+    round_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    # Resultado REAL del Mundial 2026, oculto mientras el partido está 'scheduled'
+    # (no se expone en FixtureOut). Al "jugar"/simular la jornada desde el panel
+    # admin, se usa este marcador verídico en vez de uno aleatorio: la demo
+    # arranca al inicio del torneo y va revelando los resultados reales.
+    result_home_score: Mapped[int | None] = mapped_column(Integer)
+    result_away_score: Mapped[int | None] = mapped_column(Integer)
 
 
 class UserPrediction(Base):

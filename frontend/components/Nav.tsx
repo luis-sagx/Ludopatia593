@@ -13,18 +13,15 @@ const LINKS = [
 
 export default function Nav() {
   const [points, setPoints] = useState<number | null>(null);
-  const [authed, setAuthed] = useState(false);
-  const { authed: hasToken, initializing } = useSession();
+  const { authed, initializing } = useSession();
   const pathname = usePathname();
   const router = useRouter();
 
   const refresh = useCallback(() => {
     if (initializing) return;
-    if (!hasToken) { setAuthed(false); setPoints(null); return; }
-    api.me().then((u) => { setPoints(u.points_balance); setAuthed(true); }).catch(() => {
-      setAuthed(false); setPoints(null);
-    });
-  }, [hasToken, initializing]);
+    if (!authed) { setPoints(null); return; }
+    api.me().then((u) => setPoints(u.points_balance)).catch(() => setPoints(null));
+  }, [authed, initializing]);
 
   useEffect(() => {
     refresh();
@@ -65,7 +62,7 @@ export default function Nav() {
               </span>
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => { api.logout().finally(() => { setAuthed(false); router.push("/login"); }); }}
+                onClick={() => { api.logout().finally(() => { router.push("/login"); }); }}
               >
                 Salir
               </button>

@@ -33,6 +33,26 @@ async def lifespan(app: FastAPI):
             "model.json no encontrado: endpoints de predicción devolverán 503 "
             "hasta que se cargue un modelo."
         )
+    else:
+        # Precalienta la caché del "Ganador del Mundial" en segundo plano: así
+        # uvicorn queda disponible al instante y la primera visita a esa vista
+        # no espera la simulación Monte Carlo. Nunca bloquea el arranque.
+        import threading
+
+        def _warm_champion():
+            try:
+                from .db.session import SessionLocal
+                from .api.predictions import warm_champion_cache
+                db = SessionLocal()
+                try:
+                    if warm_champion_cache(db):
+                        logger.info("cache de campeón precalentada")
+                finally:
+                    db.close()
+            except Exception:
+                logger.warning("no se pudo precalentar la cache de campeón", exc_info=True)
+
+        threading.Thread(target=_warm_champion, name="warm-champion", daemon=True).start()
     yield
 
 
@@ -64,12 +84,29 @@ async def security_middleware(request: Request, call_next):
     start = time.perf_counter()
     ip = request.client.host if request.client else "unknown"
 
+    # Preflight CORS (OPTIONS): no debe consumir cuota ni bloquearse por rate
+    # limit. Si se le responde 429 (sin cabeceras CORS), el navegador reporta
+    # un error de CORS opaco y rompe TODA la app. Se deja pasar al CORSMiddleware.
+    if request.method == "OPTIONS":
+        resp = await call_next(request)
+        resp.headers["X-Request-Id"] = request_id
+        return resp
+
     # rate limit global por IP (defensa abuso)
     if not allow(f"global:{ip}", settings.rate_limit_per_min):
         resp = JSONResponse(
             {"detail": "rate limit excedido"},
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         )
+        # El 429 se genera ANTES del CORSMiddleware, así que hay que adjuntar
+        # las cabeceras CORS a mano; si no, el navegador lo trata como fallo de
+        # CORS en vez de mostrar el 429 real (y no puede reintentar tras el TTL).
+        origin = request.headers.get("origin")
+        if origin and origin in settings.cors_origins:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Access-Control-Allow-Credentials"] = "true"
+            resp.headers["Vary"] = "Origin"
+        resp.headers["Retry-After"] = "60"
     else:
         resp = await call_next(request)
 
