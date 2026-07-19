@@ -99,11 +99,21 @@ def place_prediction(
     except KeyError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"equipo sin datos: {e}")
 
-    # bloqueo de fila del usuario para descuento atómico de puntos (anti race)
-    locked = db.query(User).filter(User.id == user.id).with_for_update().one()
-    if locked.points_balance < body.stake_points:
+    # Descuento ATÓMICO de puntos con guardia en el propio UPDATE: una sola
+    # sentencia SQL resta el stake solo si hay saldo suficiente. Al no haber
+    # hueco leer-luego-escribir, no hay lost update aunque el boleto envíe varias
+    # apuestas en paralelo (el frontend hace Promise.all). Funciona igual en
+    # SQLite (que ignora SELECT ... FOR UPDATE) y en Postgres. rowcount 0 => no
+    # alcanzó el saldo.
+    debited = db.query(User).filter(
+        User.id == user.id,
+        User.points_balance >= body.stake_points,
+    ).update(
+        {User.points_balance: User.points_balance - body.stake_points},
+        synchronize_session=False,
+    )
+    if not debited:
         raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "puntos insuficientes")
-    locked.points_balance -= body.stake_points
 
     pred = UserPrediction(
         user_id=user.id,

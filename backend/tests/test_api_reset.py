@@ -57,6 +57,8 @@ def test_reset_clears_bets_and_restores_balance(client, admin_headers):
     # saldo restaurado y sin apuestas
     assert client.get("/v1/auth/me", headers=h).json()["points_balance"] == 1000
     assert client.get("/v1/bets", headers=h).json() == []
+    # el admin también vuelve a 1000 (no conserva puntos de antes del reset)
+    assert client.get("/v1/auth/me", headers=admin_headers).json()["points_balance"] == 1000
 
 
 def test_reset_reopens_fixtures_for_betting(client, admin_headers):

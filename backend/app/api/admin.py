@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from ..core.config import settings
 from ..core.ratelimit import rate_limit_dep
 from ..db.session import get_db
-from ..db.models import User, Role, Fixture, FixtureStatus, UserPrediction, PredictionStatus, AuditLog
+from ..db.models import User, Fixture, FixtureStatus, UserPrediction, PredictionStatus, AuditLog
 from ..ml.inference import inference
 from ..ml.markets import market_1x2, market_over_under, market_btts
 from .predictions import invalidate_prediction_cache
@@ -185,10 +185,9 @@ def reset_tournament(
     la bitácora de auditoría. Protegida por RBAC admin + rate limit del router.
     """
     deleted_preds = db.query(UserPrediction).delete(synchronize_session=False)
-    users_reset = (
-        db.query(User)
-        .filter(User.role == Role.user)
-        .update({User.points_balance: STARTING_BALANCE}, synchronize_session=False)
+    # Todos los usuarios (incluido el admin) vuelven al bankroll inicial.
+    users_reset = db.query(User).update(
+        {User.points_balance: STARTING_BALANCE}, synchronize_session=False
     )
 
     # Borrar y reconstruir los fixtures garantiza el estado inicial correcto
