@@ -43,6 +43,6 @@ curl -X POST $BACK/v1/admin/simulate -H "Authorization: Bearer $ATOK" \
 
 ## En el deploy actual de Railway (torneo ya jugado)
 
-La base de Railway tiene el torneo de una demo anterior. **No hace falta recrear la base**: basta con desplegar esta rama (Railway redepliega solo al hacer push/merge) y pulsar **Reiniciar torneo** una vez — el reset reabre los partidos existentes (conservando sus resultados reales ocultos), borra apuestas y restablece saldos. A partir de ahí, todo arranca desde el primer partido.
+La base de Railway tiene el torneo de una demo anterior. **No hace falta recrear la base**: basta con desplegar esta rama (Railway redepliega solo al hacer push/merge) y pulsar **Reiniciar torneo** una vez. El reset **rehace los partidos desde el seed** (round_order correcto, con su resultado real oculto), borra apuestas y restablece saldos. Esto además **sana bases viejas**: si los partidos traían `round_order=0` de un esquema anterior (por eso salían las 104 rondas de golpe en vez de una a la vez), al rehacerlos se corrige y el desbloqueo progresivo vuelve a funcionar (solo se ve la jornada 1, luego las siguientes al avanzar).
 
 > El reset **no** borra cuentas de usuario ni la bitácora de auditoría (`audit_log`): solo reinicia el estado del juego (apuestas, saldos y estado de los partidos).

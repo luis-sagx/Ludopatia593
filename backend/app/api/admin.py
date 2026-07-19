@@ -22,7 +22,7 @@ from ..ml.markets import market_1x2, market_over_under, market_btts
 from .predictions import invalidate_prediction_cache
 from .deps import require_admin
 from ..services.api_football import sync_world_cup_fixtures
-from ..seed import future_kickoff
+from ..seed import _build_group_stage
 
 logger = logging.getLogger(__name__)
 
@@ -175,16 +175,15 @@ def reset_tournament(
 
     - Borra todas las apuestas/predicciones de todos los usuarios.
     - Devuelve a cada usuario NO admin el bankroll inicial.
-    - Vuelve todos los fixtures a 'scheduled', limpia el marcador en vivo y
-      reprograma sus kickoffs a futuro (conservando el resultado real oculto en
-      result_home/away_score para revelarlo al simular). Así los usuarios apuestan
-      desde la jornada 1 y el admin va avanzando ronda a ronda.
+    - Rehace todos los fixtures desde el seed (todos 'scheduled', kickoff a
+      futuro, con su round_order correcto para el desbloqueo progresivo y su
+      resultado real guardado oculto). Rehacerlos —en vez de solo tocarlos—
+      sana bases con datos viejos (p.ej. round_order=0 de un esquema anterior,
+      que mostraba TODAS las rondas de golpe en vez de una a la vez).
 
     Operación destructiva pero acotada al estado del juego: NO borra cuentas ni
     la bitácora de auditoría. Protegida por RBAC admin + rate limit del router.
     """
-    now = datetime.now(timezone.utc)
-
     deleted_preds = db.query(UserPrediction).delete(synchronize_session=False)
     users_reset = (
         db.query(User)
@@ -192,19 +191,20 @@ def reset_tournament(
         .update({User.points_balance: STARTING_BALANCE}, synchronize_session=False)
     )
 
-    fixtures = db.query(Fixture).order_by(Fixture.round_order, Fixture.id).all()
-    for seq, fx in enumerate(fixtures):
-        fx.status = FixtureStatus.scheduled
-        fx.home_score = None
-        fx.away_score = None
-        fx.kickoff_utc = future_kickoff(now, fx.round_order, seq)
+    # Borrar y reconstruir los fixtures garantiza el estado inicial correcto
+    # (round_order incluido) sin depender de lo que hubiera en la base.
+    db.query(Fixture).delete(synchronize_session=False)
+    db.flush()
+    _build_group_stage(db)
+    db.flush()
+    fixtures_reset = db.query(Fixture).count()
 
     db.add(AuditLog(
         actor_id=admin.id, action="reset_tournament", resource="tournament",
         detail={
             "predictions_deleted": deleted_preds,
             "users_reset": users_reset,
-            "fixtures_reset": len(fixtures),
+            "fixtures_reset": fixtures_reset,
             "request_id": request.state.request_id,
         },
     ))
@@ -214,7 +214,7 @@ def reset_tournament(
         "ok": True,
         "predictions_deleted": deleted_preds,
         "users_reset": users_reset,
-        "fixtures_reset": len(fixtures),
+        "fixtures_reset": fixtures_reset,
     }
 
 

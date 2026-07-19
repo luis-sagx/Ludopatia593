@@ -12,13 +12,18 @@ def _bet(client, headers, fid, key):
 
 
 def test_tournament_starts_from_first_round_all_scheduled(client, admin_headers):
-    # Tras reiniciar, TODOS los fixtures visibles son apostables (scheduled): el
-    # torneo arranca en el primer partido, sin jornada pre-jugada. (Se resetea
-    # primero porque la BD de la sesión es compartida entre tests.)
+    # Tras reiniciar, el desbloqueo progresivo debe mostrar SOLO la jornada 1 de
+    # grupos (no toda la eliminatoria de golpe). Se resetea primero porque la BD
+    # de la sesión es compartida entre tests.
     client.post("/v1/admin/reset-tournament", headers=admin_headers)
     fixtures = client.get("/v1/fixtures").json()
     assert fixtures, "no hay fixtures tras el reset"
     assert all(f["status"] == "scheduled" for f in fixtures)
+    # solo fase de grupos visible (nada de round_32/octavos/etc. al inicio)
+    assert all(f["stage"].startswith("group_") for f in fixtures), \
+        f"se filtró mal el desbloqueo progresivo: {sorted({f['stage'] for f in fixtures})}"
+    # 12 grupos x 2 partidos de la jornada 1
+    assert len(fixtures) == 24, f"esperaba 24 partidos de jornada 1, hubo {len(fixtures)}"
 
 
 def test_reset_requires_admin(client, user_headers):
