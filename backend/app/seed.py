@@ -222,6 +222,15 @@ KO_ROUND_ORDER: dict[str, int] = {
 }
 
 
+def future_kickoff(now: datetime, round_order: int, seq: int = 0):
+    """Kickoff en el FUTURO y ordenado por ronda. Usado tanto por el seed inicial
+    como por el reset del torneo: el backend rechaza apuestas si el kickoff ya
+    pasó, así que toda ronda por jugar (incluida la jornada 1) debe quedar a
+    futuro. `round_order` (1-9) separa las rondas por días; `seq` desempata dentro
+    de la ronda por horas para conservar el orden cronológico."""
+    return now + timedelta(days=round_order, hours=seq % 12)
+
+
 def _bet_won(market: str, selection: str, hg: int, ag: int) -> bool:
     """Misma lógica de liquidación que el panel admin (1x2 / over-under / btts)."""
     if market == "1x2":
@@ -278,67 +287,44 @@ def _seed_demo_bets(db):
 
 
 def _build_group_stage(db):
-    """Crea las fixtures del Mundial 2026 en estado "inicio del torneo".
+    """Crea las fixtures del Mundial 2026 en estado "inicio del torneo desde cero".
 
-    La demo arranca justo cuando el Mundial ha empezado: la jornada 1 ya se jugó
-    (marcadores reales, 'finished') y TODO lo demás queda 'scheduled' para poder
-    apostar (jornadas 2-3 y toda la eliminatoria). Cada partido por jugar guarda
-    su resultado REAL en result_home/away_score (oculto): al "jugar"/simular la
-    jornada desde el panel admin se revela ese marcador verídico, no uno
-    aleatorio. Los kickoffs se reprograman al futuro próximo (el backend rechaza
-    apuestas si el kickoff ya pasó) conservando el orden cronológico real.
+    La demo arranca en el PRIMER partido: TODO el torneo queda 'scheduled' y
+    apostable (jornada 1 incluida), con desbloqueo progresivo por ronda. Cada
+    partido guarda su resultado REAL en result_home/away_score (oculto): al
+    "jugar"/simular la ronda desde el panel admin se revela ese marcador
+    verídico, no uno aleatorio. Los kickoffs se programan a futuro (el backend
+    rechaza apuestas si el kickoff ya pasó) conservando el orden por ronda.
     """
     now = datetime.now(timezone.utc)
     idx = 0
 
-    # Fase de grupos: jornada 1 jugada (pasado reciente); jornadas 2 y 3 por
-    # jugar (futuro próximo, apostables) con su resultado real guardado.
-    md_base = {
-        1: now - timedelta(days=2),
-        2: now + timedelta(days=1),
-        3: now + timedelta(days=2),
-    }
+    # Fase de grupos: las 3 jornadas por jugar (apostables) con su resultado real
+    # guardado. round_order = jornada (1, 2, 3).
     for letter, matches in REAL_FIXTURES.items():
         for gi, (md, home, away, hg, ag) in enumerate(matches):
             ext = f"wc2026-g{letter}-{gi}"
             if db.query(Fixture).filter(Fixture.external_id == ext).first():
                 continue
-            kickoff = md_base[md] + timedelta(hours=idx % 22)
-            if md == 1:
-                db.add(Fixture(
-                    external_id=ext, stage=f"group_{letter}", home_team=home, away_team=away,
-                    kickoff_utc=kickoff, neutral=True, round_order=md,
-                    status=FixtureStatus.finished, home_score=hg, away_score=ag,
-                    result_home_score=hg, result_away_score=ag,
-                ))
-            else:
-                db.add(Fixture(
-                    external_id=ext, stage=f"group_{letter}", home_team=home, away_team=away,
-                    kickoff_utc=kickoff, neutral=True, status=FixtureStatus.scheduled,
-                    round_order=md,
-                    result_home_score=hg, result_away_score=ag,
-                ))
+            db.add(Fixture(
+                external_id=ext, stage=f"group_{letter}", home_team=home, away_team=away,
+                kickoff_utc=future_kickoff(now, md, idx), neutral=True,
+                status=FixtureStatus.scheduled, round_order=md,
+                result_home_score=hg, result_away_score=ag,
+            ))
             idx += 1
 
     # Eliminatorias: todas por jugar (apostables), con su resultado real guardado
     # cuando ya se conoce. Tercer puesto y final aún no se disputan (result None).
-    ko_base = {
-        "round_32": now + timedelta(days=3),
-        "round_16": now + timedelta(days=4),
-        "quarter_final": now + timedelta(days=5),
-        "semi_final": now + timedelta(days=6),
-        "third_place": now + timedelta(days=7),
-        "final": now + timedelta(days=7, hours=6),
-    }
     for ki, (stage, home, away, hg, ag) in enumerate(KNOCKOUT_FIXTURES):
         ext = f"wc2026-ko-{ki}"
         if db.query(Fixture).filter(Fixture.external_id == ext).first():
             continue
-        kickoff = ko_base[stage] + timedelta(hours=ki % 6)
+        ro = KO_ROUND_ORDER[stage]
         db.add(Fixture(
             external_id=ext, stage=stage, home_team=home, away_team=away,
-            kickoff_utc=kickoff, neutral=True, status=FixtureStatus.scheduled,
-            round_order=KO_ROUND_ORDER[stage],
+            kickoff_utc=future_kickoff(now, ro, ki), neutral=True,
+            status=FixtureStatus.scheduled, round_order=ro,
             result_home_score=hg, result_away_score=ag,
         ))
 

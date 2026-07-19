@@ -26,3 +26,6 @@ coverage.xml
 .pytest_cache/
 tests/_pytest.db
 backend/smoke.db
+
+# TS incremental build info
+*.tsbuildinfo

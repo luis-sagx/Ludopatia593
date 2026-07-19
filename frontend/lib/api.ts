@@ -72,4 +72,7 @@ export const api = {
   // Admin: simula el cierre de partidos por jugar y liquida las apuestas pendientes.
   simulate: (body: { count?: number; stage?: string } = {}) =>
     req("/v1/admin/simulate", { method: "POST", body: JSON.stringify(body) }, true),
+  // Admin: reinicia el torneo desde cero (todos apuestan desde el primer partido).
+  resetTournament: () =>
+    req("/v1/admin/reset-tournament", { method: "POST" }, true),
 };

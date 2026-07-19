@@ -16,14 +16,19 @@ from sqlalchemy.orm import Session
 from ..core.config import settings
 from ..core.ratelimit import rate_limit_dep
 from ..db.session import get_db
-from ..db.models import User, Fixture, FixtureStatus, UserPrediction, PredictionStatus, AuditLog
+from ..db.models import User, Role, Fixture, FixtureStatus, UserPrediction, PredictionStatus, AuditLog
 from ..ml.inference import inference
 from ..ml.markets import market_1x2, market_over_under, market_btts
 from .predictions import invalidate_prediction_cache
 from .deps import require_admin
 from ..services.api_football import sync_world_cup_fixtures
+from ..seed import future_kickoff
 
 logger = logging.getLogger(__name__)
+
+# Bankroll virtual inicial (coincide con el default de User.points_balance). Al
+# reiniciar el torneo cada usuario vuelve a este saldo.
+STARTING_BALANCE = 1000
 
 # Límite a nivel de router: cubre TODAS las rutas admin (actuales y futuras)
 # con una sola línea -- defensa en profundidad, RBAC ya es el control primario.
@@ -158,6 +163,59 @@ def settle_fixture(
     db.commit()
     invalidate_prediction_cache()
     return {"fixture_id": fixture_id, "settled": settled}
+
+
+@router.post("/reset-tournament")
+def reset_tournament(
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Reinicia el torneo DESDE CERO (primer partido).
+
+    - Borra todas las apuestas/predicciones de todos los usuarios.
+    - Devuelve a cada usuario NO admin el bankroll inicial.
+    - Vuelve todos los fixtures a 'scheduled', limpia el marcador en vivo y
+      reprograma sus kickoffs a futuro (conservando el resultado real oculto en
+      result_home/away_score para revelarlo al simular). Así los usuarios apuestan
+      desde la jornada 1 y el admin va avanzando ronda a ronda.
+
+    Operación destructiva pero acotada al estado del juego: NO borra cuentas ni
+    la bitácora de auditoría. Protegida por RBAC admin + rate limit del router.
+    """
+    now = datetime.now(timezone.utc)
+
+    deleted_preds = db.query(UserPrediction).delete(synchronize_session=False)
+    users_reset = (
+        db.query(User)
+        .filter(User.role == Role.user)
+        .update({User.points_balance: STARTING_BALANCE}, synchronize_session=False)
+    )
+
+    fixtures = db.query(Fixture).order_by(Fixture.round_order, Fixture.id).all()
+    for seq, fx in enumerate(fixtures):
+        fx.status = FixtureStatus.scheduled
+        fx.home_score = None
+        fx.away_score = None
+        fx.kickoff_utc = future_kickoff(now, fx.round_order, seq)
+
+    db.add(AuditLog(
+        actor_id=admin.id, action="reset_tournament", resource="tournament",
+        detail={
+            "predictions_deleted": deleted_preds,
+            "users_reset": users_reset,
+            "fixtures_reset": len(fixtures),
+            "request_id": request.state.request_id,
+        },
+    ))
+    db.commit()
+    invalidate_prediction_cache()
+    return {
+        "ok": True,
+        "predictions_deleted": deleted_preds,
+        "users_reset": users_reset,
+        "fixtures_reset": len(fixtures),
+    }
 
 
 @router.post("/simulate")

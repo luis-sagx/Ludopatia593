@@ -27,6 +27,7 @@ export default function BetsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [simMsg, setSimMsg] = useState("");
+  const [resetting, setResetting] = useState(false);
   const router = useRouter();
   const { authed, initializing } = useSession();
 
@@ -66,6 +67,30 @@ export default function BetsPage() {
     }
   }
 
+  async function runReset() {
+    // Acción destructiva: borra apuestas y reinicia saldos. Confirmar antes.
+    if (!window.confirm(
+      "¿Reiniciar el torneo desde cero? Se borran TODAS las apuestas, se " +
+      "restablece el saldo de todos los usuarios y el torneo vuelve al primer " +
+      "partido. Esta acción no se puede deshacer."
+    )) return;
+    setResetting(true);
+    setSimMsg("");
+    try {
+      const r = await api.resetTournament();
+      setSimMsg(
+        `Torneo reiniciado: ${r.fixtures_reset} partidos reabiertos, ` +
+        `${r.predictions_deleted} apuestas borradas, ${r.users_reset} usuarios con saldo restablecido.`
+      );
+      await refresh();
+      window.dispatchEvent(new Event("balance:refresh"));
+    } catch (e: any) {
+      setSimMsg(`Error: ${e.message}`);
+    } finally {
+      setResetting(false);
+    }
+  }
+
   return (
     <div className="content-single">
       <div className="section-head">
@@ -77,16 +102,23 @@ export default function BetsPage() {
         <div className="card" style={{ marginBottom: 16, borderColor: "var(--gold)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontWeight: 700 }}>Panel admin · Jugar siguiente jornada</div>
+              <div style={{ fontWeight: 700 }}>Panel admin · Control del torneo</div>
               <div className="muted small">
-                Juega la próxima jornada/ronda (grupos → eliminatorias) con los resultados
-                del torneo, liquida las apuestas pendientes y <b>desbloquea la siguiente ronda</b>.
-                El cuadro se revela de forma progresiva, como en un mundial real.
+                <b>Jugar siguiente jornada</b>: juega la próxima ronda (grupos → eliminatorias)
+                con los resultados reales, liquida las apuestas pendientes y desbloquea la
+                siguiente ronda. <b>Reiniciar torneo</b>: vuelve todo al primer partido, borra
+                las apuestas y restablece el saldo de todos para empezar de nuevo.
               </div>
             </div>
-            <button className="btn" onClick={runSimulate} disabled={simulating}>
-              {simulating ? <><span className="spinner" /> Jugando…</> : "Jugar siguiente jornada"}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn" onClick={runSimulate} disabled={simulating || resetting}>
+                {simulating ? <><span className="spinner" /> Jugando…</> : "Jugar siguiente jornada"}
+              </button>
+              <button className="btn" onClick={runReset} disabled={simulating || resetting}
+                style={{ background: "transparent", borderColor: "var(--gold)" }}>
+                {resetting ? <><span className="spinner" /> Reiniciando…</> : "Reiniciar torneo"}
+              </button>
+            </div>
           </div>
           {simMsg && <p className="small" style={{ marginBottom: 0, marginTop: 10 }}>{simMsg}</p>}
         </div>
